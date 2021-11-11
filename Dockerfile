@@ -14,25 +14,30 @@ WORKDIR /app
 
 ARG CACHEBUST=1
 ARG APP_VERSION=v1.0
+ARG ROADRUNNER_STABILITY=stable
+ARG ROADRUNNER_VERSION=2.*
+ARG ROADRUNNER_CONFIG=.rr.yaml
 
-RUN git clone https://github.com/butschster/ray-server.git /app
-RUN git pull
+RUN git clone https://github.com/buggregator/app.git /app
 RUN composer install
 
 RUN chmod 0777 storage -R
+RUN chmod 0777 bootstrap -R
 
+# Create .env file
 RUN cp /app/.env.example /app/.env
 RUN cat /app/.env.example
 RUN echo "APP_VERSION=\"${APP_VERSION}\"" >> /app/.env
 
-RUN cat /app/.env
-
 # Create a sqlite database
 RUN touch /app/database/database.sqlite
+
+# Download latest stable version of RoadRunner
+RUN vendor/bin/rr get-binary -o linux -a amd64 -f ${ROADRUNNER_VERSION} -s ${ROADRUNNER_STABILITY}
 
 EXPOSE 8000
 EXPOSE 1025
 EXPOSE 9912
 EXPOSE 9913
 
-CMD php artisan migrate:fresh --force && /usr/bin/supervisord -c /app/supervisord.conf
+CMD php artisan migrate:fresh --force && ./rr serve -c ${ROADRUNNER_CONFIG}
