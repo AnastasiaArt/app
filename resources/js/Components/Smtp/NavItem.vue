@@ -1,22 +1,17 @@
 <template>
-    <Link :href="`/mail/${event.uuid}`"
+    <Link :href="event.route.show"
           class="block border-b text-sm hover:bg-white flex items-stretch"
-          :class="{ 'bg-white': isActive, 'bg-gray-50': !isActive }"
+          :class="{'bg-purple-50': isActive }"
     >
 
         <div class="w-1 self-stretch flex-none rounded-r" :class="{ 'bg-blue-500': isActive }"></div>
         <div class="flex-grow p-3">
             <h3 class="font-semibold" :class="{ 'font-bold': isActive }">{{ event.event.subject }}</h3>
             <div class="flex justify-between text-xs text-gray-500">
-                <span>
-                    to: {{ event.event.to[0].email }}
-                </span>
-                <span>
-                    {{ date }}
-                </span>
+                <span><strong>To:</strong> {{ event.event.to[0].email }}</span>
+                <span>{{ date }}</span>
             </div>
         </div>
-
     </Link>
 </template>
 
@@ -30,13 +25,14 @@ export default {
     },
     computed: {
         url() {
-            return `/mail/${this.event.uuid}`
+            return this.event.route.show
         },
         date() {
-            return this.event.date.format('HH:mm:ss')
+            return this.event.date.fromNow()
         },
         isActive() {
-            return this.$page.url.startsWith(this.url)
+            const url = new URL(this.url)
+            return this.$page.url.startsWith(url.pathname)
         }
     }
 }

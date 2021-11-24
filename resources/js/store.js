@@ -1,6 +1,7 @@
 import {createStore} from "vuex";
 import moment from "moment";
 import axios from "axios";
+import route from "ziggy-js/src/js";
 
 function generateScreenName() {
     return 'Debug session ' + moment().format('hh:mm:ss')
@@ -65,9 +66,67 @@ const smtp = {
     }
 }
 
+const sentry = {
+    namespaced: true,
+    state: () => ({
+        events: [],
+        event: null
+    }),
+    mutations: {
+        clearEvents(state) {
+            state.events = []
+        },
+        pushEvent(state, event) {
+            if (state.events.find(e => event.uuid == e.uuid)) {
+                return
+            }
+
+            state.events.unshift(event)
+        },
+        openEvent(state, event) {
+            state.event = event
+        },
+        deleteEvent(state, event) {
+            state.events = state.events.filter(e => event.uuid == e.uuid)
+        },
+        closeEvent(state) {
+            state.event = null
+        }
+    }
+}
+
+const inspector = {
+    namespaced: true,
+    state: () => ({
+        events: [],
+        event: null
+    }),
+    mutations: {
+        clearEvents(state) {
+            state.events = []
+        },
+        pushEvent(state, event) {
+            if (state.events.find(e => event.uuid == e.uuid)) {
+                return
+            }
+
+            state.events.unshift(event)
+        },
+        openEvent(state, event) {
+            state.event = event
+        },
+        deleteEvent(state, event) {
+            state.events = state.events.filter(e => event.uuid == e.uuid)
+        },
+        closeEvent(state) {
+            state.event = null
+        }
+    }
+}
+
 export const store = createStore({
     modules: {
-        ws, smtp, terminal
+        ws, smtp, sentry, terminal, inspector
     },
 
     state() {
@@ -106,6 +165,17 @@ export const store = createStore({
 
             return labels.filter((item, index) => labels.indexOf(item) == index)
         },
+        eventsByType: state => type => {
+            let events = [];
+
+            Object.keys(state.events).forEach(key => {
+                state.events[key].filter(e => e.app != type).forEach(e => [
+                    events.push(e)
+                ])
+            })
+
+            return events
+        },
         filteredEvents: state => {
             let events = state.events[state.currentScreen] || []
 
@@ -134,6 +204,14 @@ export const store = createStore({
                 })
         }
     },
+    actions: {
+        clearEvents({}, type) {
+            axios.delete(route('events.clear'), {data: {type}})
+        },
+        deleteEvent({}, uuid) {
+            axios.delete(route('event.delete', uuid))
+        },
+    },
     mutations: {
         clearSelectedColors(state) {
             state.selectedColors = []
@@ -159,14 +237,19 @@ export const store = createStore({
                 event.setCollapsed(data[1])
             }
         },
-        clearEvents(state) {
+        clearEvents(state, type) {
+            if (type) {
+                Object.keys(state.events).forEach(key => {
+                    state.events[key] = state.events[key].filter(e => e.app != type)
+                })
+
+                return
+            }
+
             state.events = {}
-            state.screens = []
-            axios.delete(`/events`)
         },
         deleteEvent(state, uuid) {
             state.events[state.currentScreen] = state.events[state.currentScreen].filter(e => e.uuid != uuid)
-            axios.delete(`/event/${uuid}`)
         },
         switchScreen(state, screen) {
             if (_.isEmpty(screen)) {

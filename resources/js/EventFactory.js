@@ -4,20 +4,22 @@ import SlackEvent from "./Slack/event";
 import MonologEvent from "./Monolog/event";
 import SmtpEvent from "./Smtp/event";
 import VarDumpEvent from "./VarDump/event";
+import InspectorEvent from "./Inspector/event";
 import {store} from "./store";
 
 const eventTypes = {
     ray: json => {
-        const event = new RayEvent(json.data, json.uuid, json.timestamp);
+        const event = new RayEvent(json.payload, json.uuid, json.timestamp);
         if (new RayEventHandler(event).handle()) {
             return event
         }
     },
-    sentry: json => new SentryEvent(json.data, json.uuid, json.timestamp),
-    slack: json => new SlackEvent(json.data, json.uuid, json.timestamp),
-    monolog: json => new MonologEvent(json.data, json.uuid, json.timestamp),
-    smtp: json => new SmtpEvent(json.data, json.uuid, json.timestamp),
-    'var-dump': json => new VarDumpEvent(json.data, json.uuid, json.timestamp)
+    sentry: json => new SentryEvent(json.payload, json.uuid, json.timestamp),
+    slack: json => new SlackEvent(json.payload, json.uuid, json.timestamp),
+    monolog: json => new MonologEvent(json.payload, json.uuid, json.timestamp),
+    smtp: json => new SmtpEvent(json.payload, json.uuid, json.timestamp),
+    inspector: json => new InspectorEvent(json.payload, json.uuid, json.timestamp),
+    'var-dump': json => new VarDumpEvent(json.payload, json.uuid, json.timestamp)
 }
 
 export default {
@@ -28,15 +30,35 @@ export default {
             return;
         }
 
-        ws.listen('event', 'EventReceived', (payload) => {
-            const event = this.create(payload.payload)
-            if (event) {
-                if (event instanceof SmtpEvent) {
-                    store.commit('smtp/pushEvent', event)
-                }
+        const namespace = '.Modules\\IncommingEvents\\Domain\\Events';
 
-                store.commit('pushEvent', event)
+        ws.listen('event', `${namespace}\\EventWasReceived`, payload => {
+            const event = this.create(payload.payload)
+            if (!event) {
+                return;
             }
+
+            if (event instanceof SmtpEvent) {
+                store.commit('smtp/pushEvent', event)
+            } else if (event instanceof SentryEvent) {
+                store.commit('sentry/pushEvent', event)
+            } else if (event instanceof InspectorEvent) {
+                store.commit('inspector/pushEvent', event)
+            }
+
+            store.commit('pushEvent', event)
+        }).listen(`${namespace}\\EventWasDeleted`, e => {
+            store.commit('deleteEvent', e.payload.uuid)
+        }).listen(`${namespace}\\EventsWasClear`, e => {
+            if (e.payload.type === 'smtp') {
+                store.commit('smtp/clearEvents')
+            }
+
+            if (e.payload.type === 'sentry') {
+                store.commit('sentry/clearEvents')
+            }
+
+            store.commit('clearEvents', e.payload.type)
         })
 
         this.subscribed = true
@@ -44,8 +66,11 @@ export default {
 
     create(json) {
         const type = json.type.toLowerCase()
+
         if (eventTypes.hasOwnProperty(type)) {
             return eventTypes[type](json)
         }
+
+        throw new Error(`Event type [${type}] is not found.`)
     }
 }

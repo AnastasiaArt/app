@@ -1,9 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Modules\Sentry\Console;
 
 use App\Attributes\Console\Stream;
+use Generator;
 use Interfaces\Console\Handler;
 use Termwind\HtmlRenderer;
 
@@ -12,14 +14,13 @@ class StreamHandler implements Handler
 {
     public function __construct(
         private StreamHandlerConfig $config,
-        private HtmlRenderer        $renderer
-    )
-    {
+        private HtmlRenderer $renderer
+    ) {
     }
 
     public function handle(array $payload): void
     {
-        foreach ($payload['data']['exception']['values'] as $exception) {
+        foreach ($payload['payload']['exception']['values'] as $exception) {
             $this->renderException($exception);
         }
     }
@@ -30,7 +31,7 @@ class StreamHandler implements Handler
         $editorFrame = reset($frames);
 
         $this->renderer->render(
-            (string)view('sentry::console.output', [
+            (string) view('sentry::console.output', [
                 'date' => date('r'),
                 'type' => $exception['type'],
                 'message' => $exception['value'],
@@ -43,24 +44,24 @@ class StreamHandler implements Handler
     /**
      * Renders the trace of the exception.
      */
-    protected function prepareTrace(array $frames): \Generator
+    protected function prepareTrace(array $frames): Generator
     {
         foreach ($frames as $i => $frame) {
             $file = $frame['filename'];
             $line = $frame['lineno'];
-            $class = empty($frame['class']) ? '' : $frame['class'] . '::';
+            $class = empty($frame['class']) ? '' : $frame['class'].'::';
             $function = $frame['function'] ?? '';
-            $pos = str_pad((string)((int)$i + 1), 4, ' ');
+            $pos = str_pad((string) ((int) $i + 1), 4, ' ');
 
             yield $pos => [
                 'file' => $file,
                 'line' => $line,
                 'class' => $class,
-                'function' => $function
+                'function' => $function,
             ];
 
             if ($i >= 10) {
-                yield $pos => '+ more ' . count($frames) - 10 . ' frames';
+                yield $pos => '+ more '.count($frames) - 10 .' frames';
 
                 break;
             }
@@ -73,32 +74,40 @@ class StreamHandler implements Handler
      */
     protected function renderCodeSnippet(array $frame): array
     {
-        $line = (int)$frame['lineno'];
-        $startLine = $line - count($frame['pre_context']);
-
+        $line = (int) $frame['lineno'];
+        $startLine = 0;
         $content = '';
-        foreach ($frame['pre_context'] as $row) {
-            $content .= $row . "\n";
+        if (isset($frame['pre_context'])) {
+            $startLine = $line - count($frame['pre_context']) + 1;
+            foreach ($frame['pre_context'] as $row) {
+                $content .= $row."\n";
+            }
         }
-        $content .= $frame['context_line'] . "\n";
-        foreach ($frame['post_context'] as $row) {
-            $content .= $row . "\n";
+
+        if (isset($frame['context_line'])) {
+            $content .= $frame['context_line']."\n";
+        }
+
+        if (isset($frame['post_context'])) {
+            foreach ($frame['post_context'] as $row) {
+                $content .= $row."\n";
+            }
         }
 
         return [
             'file' => $frame['filename'],
             'line' => $line,
             'start_line' => $startLine,
-            'content' => $content
+            'content' => $content,
         ];
     }
 
     public function shouldBeSkipped(array $payload): bool
     {
-        if (!$this->config->isEnabled()) {
+        if (! $this->config->isEnabled()) {
             return true;
         }
 
-        return !isset($payload['data']['exception']['values'][0]);
+        return empty($payload['payload']['exception']['values']);
     }
 }
